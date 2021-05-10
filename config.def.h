@@ -6,6 +6,9 @@
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
 static char *font = "FiraCodeRetina:pixelsize=14:antialias=true:autohint=true";
+static char *font2[] = {
+	"NotoColorEmoji:pixelsize=14:antialias=true:autohint=true",
+};
 static int borderpx = 25;
 
 /*
@@ -139,7 +142,7 @@ static unsigned int defaultrcs = 257;
  * 6: Bar ("|")
  * 7: Snowman ("☃")
  */
-static unsigned int cursorshape = 2;
+static unsigned int cursorshape = 4;
 
 /*
  * Default columns and rows numbers
