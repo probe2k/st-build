@@ -5,7 +5,7 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "FiraCodeRetina:pixelsize=14:antialias=true:autohint=true";
+static char *font = "CascadiaMonoPL:pixelsize=14:antialias=true:autohint=true";
 static char *font2[] = {
 	"NotoColorEmoji:pixelsize=14:antialias=true:autohint=true",
 };
@@ -29,7 +29,7 @@ char *stty_args = "stty raw pass8 nl -echo -iexten -cstopb 38400";
 char *vtiden = "\033[?6c";
 
 /* Kerning / character bounding-box multipliers */
-static float cwscale = 0.85;
+static float cwscale = 1.0;
 static float chscale = 1.0;
 
 /*
@@ -77,7 +77,7 @@ static unsigned int cursorthickness = 2;
 static int bellvolume = 0;
 
 /* default TERM value */
-char *termname = "st-256color";
+char *termname = "xterm-256color";
 
 /*
  * spaces per tab
@@ -99,30 +99,30 @@ unsigned int tabspaces = 8;
 /* Terminal colors (16 first used in escape sequence) */
 static const char *colorname[] = {
 	/* 8 normal colors */
-	"#101010",
-	"#960050",
-	"#66aa11",
-	"#c47f2c",
-	"#30309b",
-	"#7e40a5",
-	"#3579a8",
-	"#9999aa",
+	"#363636",
+	"#ff0883",
+	"#83ff08",
+	"#ff8308",
+	"#0883ff",
+	"#8308ff",
+	"#08ff83",
+	"#b6b6b6",
 
 	/* 8 bright colors */
-	"#303030",
-	"#ff0090",
-	"#80ff00",
-	"#ffba68",
-	"#5f5fee",
-	"#bb88dd",
-	"#4eb4fa",
-	"#d0d0d0",
+	"#424242",
+	"#ff1e8e",
+	"#8eff1e",
+	"#ff8e1e",
+	"#1e8eff",
+	"#8e1eff",
+	"#1eff8e",
+	"#c2c2c2",
 
 	[255] = 0,
 
 	/* more colors can be added after 255 to use with DefaultXX */
-	"#cccccc",
-	"#555555",
+	"#000000",
+	"#b4e1fd",
 };
 
 
@@ -130,9 +130,9 @@ static const char *colorname[] = {
  * Default colors (colorname index)
  * foreground, background, cursor, reverse cursor
  */
-unsigned int defaultfg = 7;
-unsigned int defaultbg = 0;
-static unsigned int defaultcs = 256;
+unsigned int defaultfg = 257;
+unsigned int defaultbg = 256;
+static unsigned int defaultcs = 257;
 static unsigned int defaultrcs = 257;
 
 /*
