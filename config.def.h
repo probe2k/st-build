@@ -5,11 +5,11 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "My Font:pixelsize=14:antialias=true:autohint=true";
+static char *font = "MyFont:pixelsize=15:antialias=true:autohint=true";
 static char *font2[] = {
 	"NotoColorEmoji:pixelsize=14:antialias=true:autohint=true",
 };
-static int borderpx = 25;
+static int borderpx = 10;
 
 /*
  * What program is execed by st depends of these precedence rules:
@@ -121,7 +121,7 @@ static const char *colorname[] = {
 	[255] = 0,
 
 	/* more colors can be added after 255 to use with DefaultXX */
-	"#000000",
+	"#0f101b",
 	"#00ffff",
 };
 
