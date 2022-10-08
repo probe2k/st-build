@@ -5,11 +5,11 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "My Font:pixelsize=14:antialias=true:autohint=true";
+static char *font = "Iosevka Nerd Font Mono:pixelsize=18:antialias=true:autohint=true";
 static char *font2[] = {
 	"NotoColorEmoji:pixelsize=14:antialias=true:autohint=true",
 };
-static int borderpx = 25;
+static int borderpx = 20;
 
 /*
  * What program is execed by st depends of these precedence rules:
@@ -96,27 +96,29 @@ char *termname = "st-256color";
  */
 unsigned int tabspaces = 8;
 
+/* bg opacity */
+float alpha = 0.75;
+
 /* Terminal colors (16 first used in escape sequence) */
 static const char *colorname[] = {
 	/* 8 normal colors */
-	"#363636",
-	"#ff0883",
-	"#83ff08",
-	"#ff8308",
-	"#0883ff",
-	"#8308ff",
-	"#08ff83",
-	"#b6b6b6",
+	"black",
+	"red3",
+	"green3",
+	"yellow3",
+	"blue2",
+	"magenta3",
+	"cyan3",
+	"gray5",
 
-	/* 8 bright colors */
-	"#424242",
-	"#ff1e8e",
-	"#8eff1e",
-	"#ff8e1e",
-	"#1e8eff",
-	"#8e1eff",
-	"#1eff8e",
-	"#c2c2c2",
+	"gray50",
+	"red",
+	"green",
+	"yellow",
+	"#5c5cff",
+	"magenta",
+	"cyan",
+	"white",
 
 	[255] = 0,
 
