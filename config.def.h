@@ -5,7 +5,7 @@
  *
  * font: see http://freedesktop.org/software/fontconfig/fontconfig-user.html
  */
-static char *font = "Iosevka Nerd Font Mono:pixelsize=18:antialias=true:autohint=true";
+static char *font = "Cascadia Code PL:pixelsize=17:antialias=true:autohint=true";
 static char *font2[] = {
 	"NotoColorEmoji:pixelsize=14:antialias=true:autohint=true",
 };
@@ -97,28 +97,30 @@ char *termname = "st-256color";
 unsigned int tabspaces = 8;
 
 /* bg opacity */
-float alpha = 0.75;
+float alpha = 0.7;
 
 /* Terminal colors (16 first used in escape sequence) */
+
 static const char *colorname[] = {
 	/* 8 normal colors */
-	"black",
-	"red3",
-	"green3",
-	"yellow3",
-	"blue2",
-	"magenta3",
-	"cyan3",
-	"gray5",
+	"#151720",
+	"#dd6777",
+	"#90ceaa",
+	"#ecd3a0",
+	"#86aaec",
+	"#c296eb",
+	"#93cee9",
+	"#cbced3",
 
-	"gray50",
-	"red",
-	"green",
-	"yellow",
-	"#5c5cff",
-	"magenta",
-	"cyan",
-	"white",
+	/* 8 bright colors */
+	"#4f5572",
+	"#e26c7c",
+	"#95d3af",
+	"#f1d8a5",
+	"#8baff1",
+	"#c79bf0",
+	"#98d3ee",
+	"#d0d3d8",
 
 	[255] = 0,
 
@@ -133,7 +135,7 @@ static const char *colorname[] = {
  */
 unsigned int defaultfg = 257;
 unsigned int defaultbg = 256;
-static unsigned int defaultcs = 257;
+unsigned int defaultcs = 257;
 static unsigned int defaultrcs = 257;
 
 /*
@@ -176,6 +178,7 @@ static uint forcemousemod = ShiftMask;
  * Internal mouse shortcuts.
  * Beware that overloading Button1 will disable the selection.
  */
+
 static MouseShortcut mshortcuts[] = {
 	/* mask                 button   function        argument       release */
 	{ XK_ANY_MOD,           Button2, selpaste,       {.i = 0},      1 },
@@ -184,7 +187,6 @@ static MouseShortcut mshortcuts[] = {
 	{ ShiftMask,            Button5, ttysend,        {.s = "\033[6;2~"} },
 	{ XK_ANY_MOD,           Button5, kscrolldown,        {.i = 1} },
 };
-
 /* Internal keyboard shortcuts. */
 #define MODKEY Mod1Mask
 #define TERMMOD (ControlMask|ShiftMask)
