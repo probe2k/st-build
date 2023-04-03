@@ -35,7 +35,7 @@
 #define ESC_ARG_SIZ   16
 #define STR_BUF_SIZ   ESC_BUF_SIZ
 #define STR_ARG_SIZ   ESC_ARG_SIZ
-#define HISTSIZE      2000
+#define HISTSIZE      2000 // scrollback limit
 
 /* macros */
 #define IS_SET(flag)		((term.mode & (flag)) != 0)
@@ -44,8 +44,9 @@
 #define ISCONTROL(c)		(ISCONTROLC0(c) || ISCONTROLC1(c))
 #define ISDELIM(u)		(u && wcschr(worddelimiters, u))
 #define TLINE(y)		((y) < term.scr ? term.hist[((y) + term.histi - \
-				term.scr + HISTSIZE + 1) % HISTSIZE] : \
-				term.line[(y) - term.scr])
+               term.scr + HISTSIZE + 1) % HISTSIZE] : \
+               term.line[(y) - term.scr])
+#define TLINE_HIST(y)           ((y) <= HISTSIZE-term.row+2 ? term.hist[(y)] : term.line[(y-HISTSIZE+term.row-3)])
 
 enum term_mode {
 	MODE_WRAP        = 1 << 0,
@@ -119,9 +120,10 @@ typedef struct {
 	int col;      /* nb col */
 	Line *line;   /* screen */
 	Line *alt;    /* alternate screen */
-	Line hist[HISTSIZE]; /* history buffer */
-	int histi;    /* history index */
-	int scr;      /* scroll back */
+    Line hist[HISTSIZE]; /* history buffer */
+    int histi;           /* history index */
+    int scr;             /* history scroll back */
+    int histwcount;      /* how many lines have been written */
 	int *dirty;   /* dirtyness of lines */
 	TCursor c;    /* cursor */
 	int ocx;      /* old cursor col */
@@ -160,6 +162,7 @@ typedef struct {
 } STREscape;
 
 static void execsh(char *, char **);
+static char *getcwd_by_pid(pid_t pid);
 static void stty(char **);
 static void sigchld(int);
 static void ttywriteraw(const char *, size_t);
@@ -238,6 +241,33 @@ static const uchar utfbyte[UTF_SIZ + 1] = {0x80,    0, 0xC0, 0xE0, 0xF0};
 static const uchar utfmask[UTF_SIZ + 1] = {0xC0, 0x80, 0xE0, 0xF0, 0xF8};
 static const Rune utfmin[UTF_SIZ + 1] = {       0,    0,  0x80,  0x800,  0x10000};
 static const Rune utfmax[UTF_SIZ + 1] = {0x10FFFF, 0x7F, 0x7FF, 0xFFFF, 0x10FFFF};
+
+#include <time.h>
+static int su = 0;
+struct timespec sutv;
+
+static void
+tsync_begin()
+{
+	clock_gettime(CLOCK_MONOTONIC, &sutv);
+	su = 1;
+}
+
+static void
+tsync_end()
+{
+	su = 0;
+}
+
+int
+tinsync(uint timeout)
+{
+	struct timespec now;
+	if (su && !clock_gettime(CLOCK_MONOTONIC, &now)
+	       && TIMEDIFF(now, sutv) >= timeout)
+		su = 0;
+	return su;
+}
 
 ssize_t
 xwrite(int fd, const char *s, size_t len)
@@ -423,6 +453,20 @@ tlinelen(int y)
 		--i;
 
 	return i;
+}
+
+int
+tlinehistlen(int y)
+{
+    int i = term.col;
+
+    if (TLINE_HIST(y)[i - 1].mode & ATTR_WRAP)
+        return i;
+
+    while (i > 0 && TLINE_HIST(y)[i - 1].u == ' ')
+        --i;
+
+    return i;
 }
 
 void
@@ -725,8 +769,14 @@ sigchld(int a)
 	if ((p = waitpid(pid, &stat, WNOHANG)) < 0)
 		die("waiting for pid %hd failed: %s\n", pid, strerror(errno));
 
-	if (pid != p)
+	if (pid != p) {
+        if (p == 0 && wait(&stat) < 0)
+            die("wait: %s\n", strerror(errno));
+
+        /* reinstall sigchld handler */
+        signal(SIGCHLD, sigchld);
 		return;
+    }
 
 	if (WIFEXITED(stat) && WEXITSTATUS(stat))
 		die("child exited with status %d\n", WEXITSTATUS(stat));
@@ -821,6 +871,9 @@ ttynew(const char *line, char *cmd, const char *out, char **args)
 	return cmdfd;
 }
 
+static int twrite_aborted = 0;
+int ttyread_pending() { return twrite_aborted; }
+
 size_t
 ttyread(void)
 {
@@ -829,7 +882,7 @@ ttyread(void)
 	int ret, written;
 
 	/* append read bytes to unprocessed bytes */
-	ret = read(cmdfd, buf+buflen, LEN(buf)-buflen);
+	ret = twrite_aborted ? 1 : read(cmdfd, buf+buflen, LEN(buf)-buflen);
 
 	switch (ret) {
 	case 0:
@@ -837,7 +890,7 @@ ttyread(void)
 	case -1:
 		die("couldn't read from shell: %s\n", strerror(errno));
 	default:
-		buflen += ret;
+		buflen += twrite_aborted ? 0 : ret;
 		written = twrite(buf, buflen, 0);
 		buflen -= written;
 		/* keep any incomplete UTF-8 byte sequence for the next call */
@@ -851,9 +904,9 @@ void
 ttywrite(const char *s, size_t n, int may_echo)
 {
 	const char *next;
-	Arg arg = (Arg) { .i = term.scr };
+    Arg arg = (Arg) { .i = term.scr };
 
-	kscrolldown(&arg);
+    kscrolldown(&arg);
 
 	if (may_echo && IS_SET(MODE_ECHO))
 		twrite(s, n, 1);
@@ -1000,6 +1053,7 @@ tsetdirtattr(int attr)
 void
 tfulldirt(void)
 {
+	tsync_end();
 	tsetdirt(0, term.row-1);
 }
 
@@ -1053,6 +1107,11 @@ tnew(int col, int row)
 	treset();
 }
 
+int tisaltscr(void)
+{
+    return IS_SET(MODE_ALTSCREEN);
+}
+
 void
 tswapscreen(void)
 {
@@ -1062,6 +1121,26 @@ tswapscreen(void)
 	term.alt = tmp;
 	term.mode ^= MODE_ALTSCREEN;
 	tfulldirt();
+}
+
+void
+newterm(const Arg* a)
+{
+    switch (fork()) {
+    case -1:
+        die("fork failed: %s\n", strerror(errno));
+        break;
+    case 0:
+        chdir(getcwd_by_pid(pid));
+        execlp("st", "./st", NULL);
+        break;
+    }
+}
+
+static char *getcwd_by_pid(pid_t pid) {
+    char buf[32];
+    snprintf(buf, sizeof buf, "/proc/%d/cwd", pid);
+    return realpath(buf, NULL);
 }
 
 void
@@ -1090,7 +1169,8 @@ kscrollup(const Arg* a)
 	if (n < 0)
 		n = term.row + n;
 
-	if (term.scr <= HISTSIZE-n) {
+	if (term.scr < term.histwcount && \
+        term.scr <= HISTSIZE-n) {
 		term.scr += n;
 		selscroll(0, n);
 		tfulldirt();
@@ -1104,13 +1184,13 @@ tscrolldown(int orig, int n, int copyhist)
 	Line temp;
 
 	LIMIT(n, 0, term.bot-orig+1);
-	if (copyhist) {
-		term.histi = (term.histi - 1 + HISTSIZE) % HISTSIZE;
-		temp = term.hist[term.histi];
-		term.hist[term.histi] = term.line[term.bot];
-		term.line[term.bot] = temp;
-	}
 
+    if (copyhist) {
+        term.histi = (term.histi - 1 + HISTSIZE) % HISTSIZE;
+        temp = term.hist[term.histi];
+        term.hist[term.histi] = term.line[term.bot];
+        term.line[term.bot] = temp;
+    }
 
 	tsetdirt(orig, term.bot-n);
 	tclearregion(0, term.bot-n+1, term.col-1, term.bot);
@@ -1121,8 +1201,7 @@ tscrolldown(int orig, int n, int copyhist)
 		term.line[i-n] = temp;
 	}
 
-	if (term.scr == 0)
-		selscroll(orig, n);
+	selscroll(orig, n);
 }
 
 void
@@ -1133,15 +1212,18 @@ tscrollup(int orig, int n, int copyhist)
 
 	LIMIT(n, 0, term.bot-orig+1);
 
-	if (copyhist) {
-		term.histi = (term.histi + 1) % HISTSIZE;
-		temp = term.hist[term.histi];
-		term.hist[term.histi] = term.line[orig];
-		term.line[orig] = temp;
-	}
+    if (copyhist) {
+        term.histi = (term.histi + 1) % HISTSIZE;
+        temp = term.hist[term.histi];
+        term.hist[term.histi] = term.line[orig];
+        term.line[orig] = temp;
 
-	if (term.scr > 0 && term.scr < HISTSIZE)
-		term.scr = MIN(term.scr + n, HISTSIZE-1);
+        if (term.histwcount < HISTSIZE)
+            term.histwcount++;
+    }
+
+    if (term.scr > 0 && term.scr < HISTSIZE)
+        term.scr = MIN(term.scr + n, HISTSIZE-1);
 
 	tclearregion(0, orig, term.col-1, orig+n-1);
 	tsetdirt(orig+n, term.bot);
@@ -1152,8 +1234,7 @@ tscrollup(int orig, int n, int copyhist)
 		term.line[i+n] = temp;
 	}
 
-	if (term.scr == 0)
-		selscroll(orig, -n);
+	selscroll(orig, -n);
 }
 
 void
@@ -1277,6 +1358,9 @@ tsetchar(Rune u, const Glyph *attr, int x, int y)
 	term.dirty[y] = 1;
 	term.line[y][x] = *attr;
 	term.line[y][x].u = u;
+
+    if (isboxdraw(u))
+        term.line[y][x].mode |= ATTR_BOXDRAW;
 }
 
 void
@@ -2012,6 +2096,12 @@ strhandle(void)
 		xsettitle(strescseq.args[0]);
 		return;
 	case 'P': /* DCS -- Device Control String */
+		/* https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec */
+		if (strstr(strescseq.buf, "=1s") == strescseq.buf)
+			tsync_begin();  /* BSU */
+		else if (strstr(strescseq.buf, "=2s") == strescseq.buf)
+			tsync_end();  /* ESU */
+		return;
 	case '_': /* APC -- Application Program Command */
 	case '^': /* PM -- Privacy Message */
 		return;
@@ -2041,6 +2131,61 @@ strparse(void)
 			return;
 		*p++ = '\0';
 	}
+}
+
+void
+externalpipe(const Arg *arg)
+{
+   int to[2];
+   char buf[UTF_SIZ];
+   void (*oldsigpipe)(int);
+   Glyph *bp, *end;
+   int lastpos, n, newline;
+
+   if (pipe(to) == -1)
+       return;
+
+   switch (fork()) {
+   case -1:
+       close(to[0]);
+       close(to[1]);
+       return;
+   case 0:
+       dup2(to[0], STDIN_FILENO);
+       close(to[0]);
+       close(to[1]);
+       execvp(((char **)arg->v)[0], (char **)arg->v);
+       fprintf(stderr, "st: execvp %s\n", ((char **)arg->v)[0]);
+       perror("failed");
+       exit(0);
+   }
+
+   close(to[0]);
+   /* ignore sigpipe for now, in case child exists early */
+   oldsigpipe = signal(SIGPIPE, SIG_IGN);
+   newline = 0;
+   for (n = 0; n <= HISTSIZE + 2; n++) {
+       bp = TLINE_HIST(n);
+       lastpos = MIN(tlinehistlen(n) + 1, term.col) - 1;
+       if (lastpos < 0)
+           break;
+       if (lastpos == 0)
+           continue;
+       end = &bp[lastpos + 1];
+       for (; bp < end; ++bp)
+           if (xwrite(to[1], buf, utf8encode(bp->u, buf)) < 0)
+               break;
+       if ((newline = TLINE_HIST(n)[lastpos].mode & ATTR_WRAP))
+           continue;
+       if (xwrite(to[1], "\n", 1) < 0)
+           break;
+       newline = 0;
+   }
+   if (newline)
+       (void)xwrite(to[1], "\n", 1);
+   close(to[1]);
+   /* restore */
+   signal(SIGPIPE, oldsigpipe);
 }
 
 void
@@ -2557,6 +2702,9 @@ twrite(const char *buf, int buflen, int show_ctrl)
 	Rune u;
 	int n;
 
+	int su0 = su;
+	twrite_aborted = 0;
+
 	for (n = 0; n < buflen; n += charsize) {
 		if (IS_SET(MODE_UTF8)) {
 			/* process a complete utf8 char */
@@ -2566,6 +2714,10 @@ twrite(const char *buf, int buflen, int show_ctrl)
 		} else {
 			u = buf[n] & 0xFF;
 			charsize = 1;
+		}
+		if (su0 && !su) {
+			twrite_aborted = 1;
+			break;  // ESU - allow rendering before a new BSU
 		}
 		if (show_ctrl && ISCONTROL(u)) {
 			if (u & 0x80) {
@@ -2622,13 +2774,13 @@ tresize(int col, int row)
 	term.dirty = xrealloc(term.dirty, row * sizeof(*term.dirty));
 	term.tabs = xrealloc(term.tabs, col * sizeof(*term.tabs));
 
-	for (i = 0; i < HISTSIZE; i++) {
-		term.hist[i] = xrealloc(term.hist[i], col * sizeof(Glyph));
-		for (j = mincol; j < col; j++) {
-			term.hist[i][j] = term.c.attr;
-			term.hist[i][j].u = ' ';
-		}
-	}
+    for (i = 0; i < HISTSIZE; i++) {
+        term.hist[i] = xrealloc(term.hist[i], col * sizeof(Glyph));
+        for (j = mincol; j < col; j++) {
+            term.hist[i][j] = term.c.attr;
+            term.hist[i][j].u = ' ';
+        }
+    }
 
 	/* resize each row to new width, zero-pad if needed */
 	for (i = 0; i < minrow; i++) {
@@ -2709,11 +2861,10 @@ draw(void)
 		cx--;
 
 	drawregion(0, 0, term.col, term.row);
-	xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
-			term.ocx, term.ocy, term.line[term.ocy][term.ocx],
-			term.line[term.ocy], term.col);
-	term.ocx = cx;
-	term.ocy = term.c.y;
+    if (term.scr == 0)
+        xdrawcursor(cx, term.c.y, term.line[term.c.y][cx],
+                    term.ocx, term.ocy, term.line[term.ocy][term.ocx]);
+	term.ocx = cx, term.ocy = term.c.y;
 	xfinishdraw();
 	if (ocx != term.ocx || ocy != term.ocy)
 		xximspot(term.ocx, term.ocy);
